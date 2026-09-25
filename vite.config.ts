@@ -22,6 +22,15 @@ export default defineConfig(() => {
                 console.error('Error executing /api/location:', e);
               }
             }
+            if (url.startsWith('/api/comments')) {
+              try {
+                const { default: handler } = await import('./api/comments.js');
+                await handler(req, res);
+                return;
+              } catch (e) {
+                console.error('Error executing /api/comments:', e);
+              }
+            }
             if (url.startsWith('/api/health')) {
               try {
                 const { default: handler } = await import('./api/health.js');

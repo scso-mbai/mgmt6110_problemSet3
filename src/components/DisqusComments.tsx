@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Send, MessageSquare, CheckCircle2, User } from 'lucide-react';
+import React, { useEffect, useState, useCallback } from 'react';
+import { Send, MessageSquare, CheckCircle2, User, AlertCircle, Loader2 } from 'lucide-react';
 
 declare global {
   interface Window {
@@ -20,37 +20,54 @@ interface VisitorComment {
   createdAt: string;
 }
 
-const INITIAL_COMMENTS: VisitorComment[] = [
-  {
-    id: 'c1',
-    author: 'Kenji T.',
-    text: 'Checking store stock and MRT distances without page reload worked seamlessly. Picked up Ursula at Battle Bunker Bugis!',
-    createdAt: '2 hours ago',
-  },
-  {
-    id: 'c2',
-    author: 'Sarah L.',
-    text: 'Great mobile layout for quick price checking at Friday Night tournaments. Would love to see decklist import next!',
-    createdAt: 'Yesterday',
-  },
-];
+function formatCommentDate(isoOrDateString: string): string {
+  try {
+    const date = new Date(isoOrDateString);
+    if (isNaN(date.getTime())) return isoOrDateString;
+    const now = Date.now();
+    const diffSeconds = Math.floor((now - date.getTime()) / 1000);
+
+    if (diffSeconds < 60) return 'Just now';
+    if (diffSeconds < 3600) return `${Math.floor(diffSeconds / 60)}m ago`;
+    if (diffSeconds < 86400) return `${Math.floor(diffSeconds / 3600)}h ago`;
+    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch {
+    return isoOrDateString;
+  }
+}
 
 export const DisqusComments: React.FC = () => {
   const [commentText, setCommentText] = useState('');
   const [authorName, setAuthorName] = useState('');
-  const [comments, setComments] = useState<VisitorComment[]>(() => {
-    try {
-      const saved = localStorage.getItem('tcg_visitor_comments');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {
-      // fallback to initial
-    }
-    return INITIAL_COMMENTS;
-  });
+  const [comments, setComments] = useState<VisitorComment[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Fetch comments from shared backend API on load
+  const loadComments = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const res = await fetch('/api/comments');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.comments)) {
+          setComments(data.comments);
+        }
+      } else {
+        console.warn('Could not fetch comments from server:', res.status);
+      }
+    } catch (err) {
+      console.error('Failed to load comments from backend API:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadComments();
+  }, [loadComments]);
 
   useEffect(() => {
     const PAGE_URL = 'https://mgmt6110problemset3.vercel.app/';
@@ -95,29 +112,59 @@ export const DisqusComments: React.FC = () => {
     }
   }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const trimmed = commentText.trim();
-    if (!trimmed) return;
+    setErrorMessage(null);
 
-    const newComment: VisitorComment = {
-      id: 'c_' + Date.now(),
-      author: authorName.trim() || 'Collector Guest',
-      text: trimmed,
-      createdAt: 'Just now',
-    };
-
-    const updated = [newComment, ...comments];
-    setComments(updated);
-    try {
-      localStorage.setItem('tcg_visitor_comments', JSON.stringify(updated));
-    } catch {
-      // ignore
+    // Requirement 11: Basic validation
+    const trimmedText = commentText.trim();
+    if (!trimmedText) {
+      setErrorMessage('Feedback text cannot be empty.');
+      return;
     }
 
-    setCommentText('');
-    setIsSubmitted(true);
-    setTimeout(() => setIsSubmitted(false), 4000);
+    if (trimmedText.length > 500) {
+      setErrorMessage('Comment cannot exceed 500 characters.');
+      return;
+    }
+
+    const trimmedAuthor = authorName.trim().slice(0, 60);
+
+    try {
+      setIsSubmitting(true);
+      const res = await fetch('/api/comments', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          author: trimmedAuthor || 'Collector Guest',
+          text: trimmedText,
+        }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `Server responded with status ${res.status}`);
+      }
+
+      const data = await res.json();
+
+      // Requirement 10: Only display a comment as successfully submitted when the backend confirms it was saved
+      if (data.success && data.comment) {
+        setComments((prev) => [data.comment, ...prev]);
+        setCommentText('');
+        setIsSubmitted(true);
+        setTimeout(() => setIsSubmitted(false), 4000);
+      } else {
+        throw new Error('Server did not return a confirmed comment.');
+      }
+    } catch (err: any) {
+      console.error('Failed to submit comment:', err);
+      setErrorMessage(err.message || 'Unable to submit comment to backend. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -153,19 +200,28 @@ export const DisqusComments: React.FC = () => {
               <input
                 id="comment-author-input"
                 type="text"
+                maxLength={60}
                 value={authorName}
                 onChange={(e) => setAuthorName(e.target.value)}
                 placeholder="Your name or handle (optional)"
                 className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition"
               />
             </div>
+
             {isSubmitted && (
               <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-400 bg-emerald-950/60 border border-emerald-800/80 px-3 py-1.5 rounded-lg animate-in fade-in">
                 <CheckCircle2 className="w-4 h-4" />
-                <span>Thank you! Your comment was posted.</span>
+                <span>Thank you! Your comment was saved to the server.</span>
               </div>
             )}
           </div>
+
+          {errorMessage && (
+            <div className="flex items-center gap-2 text-xs font-semibold text-red-400 bg-red-950/60 border border-red-800/80 px-3 py-2 rounded-lg">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
 
           <div>
             <label htmlFor="visitor-comment-textarea" className="sr-only">
@@ -174,6 +230,7 @@ export const DisqusComments: React.FC = () => {
             <textarea
               id="visitor-comment-textarea"
               rows={3}
+              maxLength={500}
               value={commentText}
               onChange={(e) => setCommentText(e.target.value)}
               placeholder="What worked for you? What did not? Leave your feedback here..."
@@ -184,27 +241,49 @@ export const DisqusComments: React.FC = () => {
 
           <div className="flex items-center justify-between pt-1">
             <span className="text-xs text-slate-400">
-              Comments appear immediately in this feedback thread.
+              {500 - commentText.length} characters remaining · Shared across all visitors
             </span>
             <button
               id="submit-visitor-comment-btn"
               type="submit"
-              disabled={!commentText.trim()}
+              disabled={isSubmitting || !commentText.trim()}
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-40 disabled:cursor-not-allowed text-slate-950 font-bold text-sm shadow-md transition-all active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-amber-300"
             >
-              <Send className="w-4 h-4" />
-              <span>Submit Comment</span>
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Submitting...</span>
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4" />
+                  <span>Submit Comment</span>
+                </>
+              )}
             </button>
           </div>
         </form>
 
         {/* Real-time Visitor Comments Thread */}
-        {comments.length > 0 && (
-          <div className="mt-5 pt-4 border-t border-slate-800/80 space-y-3">
+        <div className="mt-5 pt-4 border-t border-slate-800/80 space-y-3">
+          <div className="flex items-center justify-between">
             <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-              Recent Feedback ({comments.length})
+              Shared Visitor Feedback ({comments.length})
             </h4>
-            <div className="space-y-2.5 max-h-[300px] overflow-y-auto pr-1">
+            {isLoading && (
+              <span className="text-xs text-slate-400 flex items-center gap-1.5">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
+                Loading comments...
+              </span>
+            )}
+          </div>
+
+          {comments.length === 0 && !isLoading ? (
+            <p className="text-xs text-slate-500 italic py-2">
+              No feedback submitted yet. Be the first visitor to leave a comment!
+            </p>
+          ) : (
+            <div className="space-y-2.5 max-h-[350px] overflow-y-auto pr-1">
               {comments.map((c) => (
                 <div
                   key={c.id}
@@ -216,17 +295,17 @@ export const DisqusComments: React.FC = () => {
                       {c.author}
                     </span>
                     <span className="text-[11px] text-slate-400 font-mono">
-                      {c.createdAt}
+                      {formatCommentDate(c.createdAt)}
                     </span>
                   </div>
-                  <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                  <p className="text-xs sm:text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">
                     {c.text}
                   </p>
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Official Disqus Container */}
