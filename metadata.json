@@ -1,0 +1,6 @@
+{
+  "name": "Trading Card Marketplace",
+  "description": "A mobile-ready trading card marketplace for browsing single cards, checking market prices, and comparing store prices, stock, and distances.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
