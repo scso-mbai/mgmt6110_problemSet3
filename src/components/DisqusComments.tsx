@@ -2,8 +2,7 @@ import React, { useEffect, useMemo } from 'react';
 
 // Disqus configuration constants:
 // Actual Disqus shortname and live production address for the project
-export const DISQUS_SHORTNAME =
-  import.meta.env.VITE_DISQUS_SHORTNAME || 'HumanAICollaboration';
+export const DISQUS_SHORTNAME = 'humanaicollaboration';
 
 export const LIVE_ADDRESS =
   import.meta.env.VITE_LIVE_ADDRESS || 'https://mgmt6110problemset3.vercel.app/';
@@ -66,8 +65,13 @@ export const DisqusComments: React.FC<DisqusCommentsProps> = ({
   // Use the actual verified shortname
   const actualShortname = useMemo(() => {
     const trimmed = (shortname || '').trim();
-    if (!trimmed || trimmed === '[PASTE YOUR SHORTNAME]' || trimmed.startsWith('[')) {
-      return 'HumanAICollaboration';
+    if (
+      !trimmed ||
+      trimmed === '[PASTE YOUR SHORTNAME]' ||
+      trimmed.startsWith('[') ||
+      trimmed.toLowerCase() === 'humanaicollaboration'
+    ) {
+      return 'humanaicollaboration';
     }
     return trimmed;
   }, [shortname]);
