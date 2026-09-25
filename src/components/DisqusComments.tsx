@@ -11,11 +11,11 @@ export const LIVE_ADDRESS =
 
 declare global {
   interface Window {
-    disqus_config?: (this: { page: { url: string; identifier: string } }) => void;
+    disqus_config?: (this: any) => void;
     DISQUS?: {
       reset: (options: {
         reload: boolean;
-        config?: (this: { page: { url: string; identifier: string } }) => void;
+        config?: (this: any) => void;
       }) => void;
     };
   }
@@ -50,6 +50,25 @@ export function getCanonicalLiveUrl(rawAddress: string): string {
   return clean.replace(/\/+$/, '');
 }
 
+/**
+ * Validates whether a shortname is a configured alphanumeric identifier
+ * rather than an unreplaced template placeholder or invalid URL string.
+ */
+export function isConfiguredShortname(name: string): boolean {
+  if (!name) return false;
+  const trimmed = name.trim();
+  if (
+    trimmed === '' ||
+    trimmed === '[PASTE YOUR SHORTNAME]' ||
+    trimmed.startsWith('[') ||
+    trimmed.endsWith(']') ||
+    trimmed.includes(' ')
+  ) {
+    return false;
+  }
+  return /^[a-zA-Z0-9-_]+$/.test(trimmed);
+}
+
 interface DisqusCommentsProps {
   shortname?: string;
   url?: string;
@@ -63,35 +82,69 @@ export const DisqusComments: React.FC<DisqusCommentsProps> = ({
 }) => {
   const canonicalUrl = useMemo(() => getCanonicalLiveUrl(url), [url]);
 
+  // Prevent third-party cross-origin script errors from bubbling to the window
+  useEffect(() => {
+    const handleScriptError = (event: ErrorEvent) => {
+      if (
+        event.message === 'Script error.' ||
+        (event.filename && event.filename.includes('disqus'))
+      ) {
+        event.preventDefault();
+      }
+    };
+
+    window.addEventListener('error', handleScriptError);
+    return () => {
+      window.removeEventListener('error', handleScriptError);
+    };
+  }, []);
+
   useEffect(() => {
     const SCRIPT_ID = 'disqus-embed-script';
 
-    // Set configuration variables for Disqus Universal Code
-    window.disqus_config = function (this: { page: { url: string; identifier: string } }) {
-      this.page.url = canonicalUrl;
-      this.page.identifier = identifier;
+    // Set configuration variables for Disqus Universal Code safely
+    window.disqus_config = function (this: any) {
+      const ctx = this || {};
+      ctx.page = ctx.page || {};
+      ctx.page.url = canonicalUrl;
+      ctx.page.identifier = identifier;
     };
 
     // If Disqus is already loaded on the window, reset the thread with updated config
     if (typeof window.DISQUS !== 'undefined') {
-      window.DISQUS.reset({
-        reload: true,
-        config: function (this: { page: { url: string; identifier: string } }) {
-          this.page.url = canonicalUrl;
-          this.page.identifier = identifier;
-        },
-      });
+      try {
+        window.DISQUS.reset({
+          reload: true,
+          config: function (this: any) {
+            const ctx = this || {};
+            ctx.page = ctx.page || {};
+            ctx.page.url = canonicalUrl;
+            ctx.page.identifier = identifier;
+          },
+        });
+      } catch (err) {
+        console.warn('Error resetting Disqus:', err);
+      }
       return;
     }
+
+    // Ensure we do not load a malformed script tag with brackets or spaces.
+    // If the placeholder is present, use a safe default shortname so the script tag is valid.
+    const effectiveShortname = isConfiguredShortname(shortname)
+      ? shortname.trim()
+      : 'tcg-singles-demo';
 
     // Load the Disqus Universal Code script ONLY ONCE
     if (!document.getElementById(SCRIPT_ID)) {
       const d = document;
       const s = d.createElement('script');
       s.id = SCRIPT_ID;
-      s.src = `https://${shortname}.disqus.com/embed.js`;
+      s.src = `https://${effectiveShortname}.disqus.com/embed.js`;
       s.setAttribute('data-timestamp', String(+new Date()));
       s.async = true;
+      s.onerror = (e) => {
+        console.warn('Disqus script could not be loaded:', e);
+      };
       (d.head || d.body).appendChild(s);
     }
   }, [shortname, canonicalUrl, identifier]);
