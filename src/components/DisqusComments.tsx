@@ -12,53 +12,35 @@ declare global {
   }
 }
 
-// Ensure window.disqus_config is set with real values before embed.js executes
-if (typeof window !== 'undefined') {
-  window.disqus_config = function (this: any) {
-    this.page = this.page || {};
-    this.page.url = 'https://mgmt6110problemset3.vercel.app/';
-    this.page.identifier = 'home';
-  };
-}
+// Fixed values so every comment lands in one thread for the main page.
+const DISQUS_SHORTNAME = 'humanaicollaboration';
+const PAGE_URL = 'https://mgmt6110problemset3.vercel.app/'; // https, no query string
+const PAGE_IDENTIFIER = 'home';
+const SCRIPT_ID = 'disqus-embed-script';
+
+const disqusConfig = function (this: any) {
+  this.page = this.page || {};
+  this.page.url = PAGE_URL;
+  this.page.identifier = PAGE_IDENTIFIER;
+};
 
 export const DisqusComments: React.FC = () => {
   useEffect(() => {
-    // Configure with real values:
-    window.disqus_config = function (this: any) {
-      this.page = this.page || {};
-      this.page.url = 'https://mgmt6110problemset3.vercel.app/';
-      this.page.identifier = 'home';
-    };
+    window.disqus_config = disqusConfig;
 
-    // Reload existing Disqus instance if already present
+    // Disqus already loaded (e.g. returning to the main page): re-attach the same thread.
     if (typeof window.DISQUS !== 'undefined') {
-      window.DISQUS.reset({
-        reload: true,
-        config: function (this: any) {
-          this.page = this.page || {};
-          this.page.url = 'https://mgmt6110problemset3.vercel.app/';
-          this.page.identifier = 'home';
-        },
-      });
+      window.DISQUS.reset({ reload: true, config: disqusConfig });
       return;
     }
 
-    // 5 & 6. Load official Disqus script only once
-    const SCRIPT_ID = 'disqus-embed-script';
+    // Load the Disqus Universal Code only once, even across re-renders and re-mounts.
     if (!document.getElementById(SCRIPT_ID)) {
       const d = document;
       const s = d.createElement('script');
       s.id = SCRIPT_ID;
-      s.src = 'https://humanaicollaboration.disqus.com/embed.js';
+      s.src = `https://${DISQUS_SHORTNAME}.disqus.com/embed.js`;
       s.setAttribute('data-timestamp', String(+new Date()));
-      s.onerror = (e) => {
-        if (typeof (e as any)?.preventDefault === 'function') {
-          (e as any).preventDefault();
-        }
-        if (typeof (e as any)?.stopPropagation === 'function') {
-          (e as any).stopPropagation();
-        }
-      };
       (d.head || d.body).appendChild(s);
     }
   }, []);
