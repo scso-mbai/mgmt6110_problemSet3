@@ -5,64 +5,32 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <script>
       (function() {
-        // Prevent third-party / cross-origin script errors (e.g. Disqus widgets/ads)
-        // from bubbling up to the top-level window as unhandled errors
-        function isSuppressed(msg, url) {
-          if (!msg && !url) return true;
-          var m = String(msg || '');
-          var u = String(url || '');
-          return (
-            m === 'Script error.' ||
-            m.indexOf('Script error') !== -1 ||
-            u.indexOf('disqus') !== -1 ||
-            u.indexOf('disquscdn') !== -1
-          );
+        function handleScriptError(e) {
+          var msg = (e && e.message) || '';
+          if (msg === 'Script error.' || msg.indexOf('Script error') !== -1 || (!e.filename && !e.lineno)) {
+            if (e.preventDefault) e.preventDefault();
+            if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+            return true;
+          }
         }
-
-        window.addEventListener(
-          'error',
-          function(e) {
-            if (isSuppressed(e.message, e.filename)) {
-              e.preventDefault();
-              e.stopImmediatePropagation();
-              return true;
-            }
-          },
-          true
-        );
-
-        window.addEventListener(
-          'unhandledrejection',
-          function(e) {
-            var reason = e.reason ? String(e.reason.message || e.reason) : '';
-            if (isSuppressed(reason, '')) {
-              e.preventDefault();
-              e.stopImmediatePropagation();
-              return true;
-            }
-          },
-          true
-        );
-
+        window.addEventListener('error', handleScriptError, true);
+        window.addEventListener('unhandledrejection', function(e) {
+          var reason = e.reason ? String(e.reason.message || e.reason) : '';
+          if (reason.indexOf('Script error') !== -1) {
+            if (e.preventDefault) e.preventDefault();
+            if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+            return true;
+          }
+        }, true);
         var origOnError = window.onerror;
         window.onerror = function(msg, url, line, col, err) {
-          if (isSuppressed(msg, url)) {
+          if (msg === 'Script error.' || (!url && !line)) {
             return true;
           }
           if (typeof origOnError === 'function') {
             return origOnError.apply(this, arguments);
           }
           return false;
-        };
-
-        // 3. Early initialization of Disqus configuration before embed.js loads
-        window.disqus_shortname = 'humanaicollaboration';
-        window.disqus_identifier = 'home';
-        window.disqus_url = 'https://mgmt6110problemset3.vercel.app/';
-        window.disqus_config = function() {
-          this.page = this.page || {};
-          this.page.identifier = 'home';
-          this.page.url = 'https://mgmt6110problemset3.vercel.app/';
         };
       })();
     </script>
