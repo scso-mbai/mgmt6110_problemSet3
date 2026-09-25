@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Search, X, SlidersHorizontal, ArrowUpDown, ChevronRight, Store, Layers } from 'lucide-react';
 import { TradingCard, InkColor, Rarity, CardType } from '../types';
 import { CardArt } from './CardArt';
+import { DisqusComments } from './DisqusComments';
 
 interface HomeScreenProps {
   cards: TradingCard[];
@@ -431,6 +432,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ cards, onSelectCard }) =
           </article>
         ))}
       </section>
+
+      {/* Disqus Comments Section for Product Feedback */}
+      <DisqusComments />
     </main>
   );
 };
