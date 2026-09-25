@@ -313,6 +313,23 @@ export default function App() {
             </span>
           </div>
         </div>
+        <p id="privacy-notice" className="max-w-4xl mx-auto px-4 mt-4 text-slate-500 leading-relaxed text-center sm:text-left">
+          This page uses Microsoft Clarity and Disqus, which use cookies to record how visitors
+          use the site and to host comments. By using this page you agree that we and Microsoft
+          may collect and use this data. See the{' '}
+          <a href="https://www.microsoft.com/privacy/privacystatement" target="_blank" rel="noopener noreferrer" className="text-slate-300 underline hover:text-amber-400">
+            Microsoft Privacy Statement
+          </a>
+          , the{' '}
+          <a href="https://disqus.com/privacy-policy/" target="_blank" rel="noopener noreferrer" className="text-slate-300 underline hover:text-amber-400">
+            Disqus privacy policy
+          </a>{' '}
+          and the{' '}
+          <a href="https://disqus.com/data-sharing-settings/" target="_blank" rel="noopener noreferrer" className="text-slate-300 underline hover:text-amber-400">
+            Disqus data sharing settings
+          </a>
+          .
+        </p>
       </footer>
     </div>
   );
