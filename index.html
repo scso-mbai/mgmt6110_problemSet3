@@ -3,6 +3,59 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      (function() {
+        // Prevent third-party / cross-origin script errors (e.g. Disqus widgets/ads)
+        // from bubbling up to the top-level window as unhandled errors
+        function isSuppressed(msg, url) {
+          if (!msg && !url) return true;
+          var m = String(msg || '');
+          var u = String(url || '');
+          return (
+            m === 'Script error.' ||
+            m.indexOf('Script error') !== -1 ||
+            u.indexOf('disqus') !== -1 ||
+            u.indexOf('disquscdn') !== -1
+          );
+        }
+
+        window.addEventListener(
+          'error',
+          function(e) {
+            if (isSuppressed(e.message, e.filename)) {
+              e.preventDefault();
+              e.stopImmediatePropagation();
+              return true;
+            }
+          },
+          true
+        );
+
+        window.addEventListener(
+          'unhandledrejection',
+          function(e) {
+            var reason = e.reason ? String(e.reason.message || e.reason) : '';
+            if (isSuppressed(reason, '')) {
+              e.preventDefault();
+              e.stopImmediatePropagation();
+              return true;
+            }
+          },
+          true
+        );
+
+        var origOnError = window.onerror;
+        window.onerror = function(msg, url, line, col, err) {
+          if (isSuppressed(msg, url)) {
+            return true;
+          }
+          if (typeof origOnError === 'function') {
+            return origOnError.apply(this, arguments);
+          }
+          return false;
+        };
+      })();
+    </script>
     <title>Trading Card Marketplace</title>
     <meta name="description" content="A mobile-ready trading card marketplace for browsing single cards, checking market prices, and comparing store prices, stock, and distances." />
     <meta property="og:title" content="Trading Card Marketplace" />

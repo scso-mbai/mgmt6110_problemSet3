@@ -1,13 +1,12 @@
 import React, { useEffect, useMemo } from 'react';
 
-// Disqus configuration constants
-// - My Disqus shortname is: [PASTE YOUR SHORTNAME]
-// - My live address is: [PASTE THE FULL https://yourproject.vercel.app ADDRESS]
+// Disqus configuration constants:
+// Actual Disqus shortname and live production address for the project
 export const DISQUS_SHORTNAME =
-  import.meta.env.VITE_DISQUS_SHORTNAME || '[PASTE YOUR SHORTNAME]';
+  import.meta.env.VITE_DISQUS_SHORTNAME || 'HumanAICollaboration';
 
 export const LIVE_ADDRESS =
-  import.meta.env.VITE_LIVE_ADDRESS || 'https://yourproject.vercel.app';
+  import.meta.env.VITE_LIVE_ADDRESS || 'https://mgmt6110problemset3.vercel.app/';
 
 declare global {
   interface Window {
@@ -22,51 +21,32 @@ declare global {
 }
 
 /**
- * Normalizes the live address so it is guaranteed to:
- * 1. Use the https protocol
- * 2. Contain no query string or hash fragment
+ * Normalizes the production URL:
+ * - Guarantees HTTPS protocol
+ * - Strips any query string (no '?')
+ * - Strips any hash fragment (no '#')
  */
 export function getCanonicalLiveUrl(rawAddress: string): string {
   if (!rawAddress) {
-    return 'https://yourproject.vercel.app';
+    return 'https://mgmt6110problemset3.vercel.app/';
   }
 
   // Strip query string and fragment
   let clean = rawAddress.split('?')[0].split('#')[0].trim();
 
-  // If prompt placeholder was retained, extract canonical URL or fallback
-  if (clean.includes('[PASTE')) {
-    const match = clean.match(/https:\/\/[^\s\]]+/);
-    clean = match ? match[0] : 'https://yourproject.vercel.app';
+  // If prompt template placeholder was present, replace with actual production address
+  if (clean.includes('[PASTE') || clean.includes('yourproject.vercel.app')) {
+    clean = 'https://mgmt6110problemset3.vercel.app/';
   }
 
-  // Ensure https
+  // Ensure https protocol
   if (clean.startsWith('http://')) {
     clean = clean.replace(/^http:\/\//, 'https://');
   } else if (!clean.startsWith('https://')) {
     clean = `https://${clean}`;
   }
 
-  return clean.replace(/\/+$/, '');
-}
-
-/**
- * Validates whether a shortname is a configured alphanumeric identifier
- * rather than an unreplaced template placeholder or invalid URL string.
- */
-export function isConfiguredShortname(name: string): boolean {
-  if (!name) return false;
-  const trimmed = name.trim();
-  if (
-    trimmed === '' ||
-    trimmed === '[PASTE YOUR SHORTNAME]' ||
-    trimmed.startsWith('[') ||
-    trimmed.endsWith(']') ||
-    trimmed.includes(' ')
-  ) {
-    return false;
-  }
-  return /^[a-zA-Z0-9-_]+$/.test(trimmed);
+  return clean;
 }
 
 interface DisqusCommentsProps {
@@ -80,81 +60,191 @@ export const DisqusComments: React.FC<DisqusCommentsProps> = ({
   url = LIVE_ADDRESS,
   identifier = 'home',
 }) => {
+  // Production URL with HTTPS and no query string
   const canonicalUrl = useMemo(() => getCanonicalLiveUrl(url), [url]);
 
-  // Prevent third-party cross-origin script errors from bubbling to the window
+  // Use the actual verified shortname
+  const actualShortname = useMemo(() => {
+    const trimmed = (shortname || '').trim();
+    if (!trimmed || trimmed === '[PASTE YOUR SHORTNAME]' || trimmed.startsWith('[')) {
+      return 'HumanAICollaboration';
+    }
+    return trimmed;
+  }, [shortname]);
+
   useEffect(() => {
-    const handleScriptError = (event: ErrorEvent) => {
-      if (
-        event.message === 'Script error.' ||
-        (event.filename && event.filename.includes('disqus'))
-      ) {
-        event.preventDefault();
+    // 8. Detect whether the application is currently running inside an iframe using:
+    //    window.self !== window.top
+    let isInsideIframe = false;
+    try {
+      isInsideIframe = window.self !== window.top;
+    } catch {
+      isInsideIframe = true;
+    }
+
+    if (isInsideIframe) {
+      console.log(
+        'This app is running inside an embedded preview. Disqus interaction may behave differently from the deployed production site.'
+      );
+    }
+
+    // 7. Inspect whether the Disqus iframe itself is loading successfully.
+    //    Log relevant errors from browser console:
+    //    - Third-party cookie & storage access warnings
+    if (typeof navigator !== 'undefined' && !navigator.cookieEnabled) {
+      console.warn(
+        'Disqus Warning: Browser cookies are disabled. Disqus comment box interaction requires cookies.'
+      );
+    }
+
+    if (typeof document !== 'undefined' && 'hasStorageAccess' in document) {
+      document
+        .hasStorageAccess()
+        .then((hasAccess) => {
+          if (!hasAccess && isInsideIframe) {
+            console.warn(
+              'Disqus Warning: Third-party storage access is ungranted in this embedded iframe. Cross-site cookie partitioning may restrict typing/authenticating in Disqus.'
+            );
+          }
+        })
+        .catch(() => {});
+    }
+
+    //    - Content Security Policy errors
+    const handleCspViolation = (e: SecurityPolicyViolationEvent) => {
+      const blocked = e.blockedURI || '';
+      if (blocked.includes('disqus') || blocked.includes('disquscdn')) {
+        console.error('Content Security Policy blocked Disqus resource:', {
+          blockedURI: e.blockedURI,
+          violatedDirective: e.violatedDirective,
+          originalPolicy: e.originalPolicy,
+        });
+      }
+    };
+    window.addEventListener('securitypolicyviolation', handleCspViolation);
+
+    // 1. Inspect existing Disqus component and confirm Disqus Universal Embed script
+    //    is loaded correctly and only once.
+    const SCRIPT_ID = 'disqus-embed-script';
+
+    // 3. Verify this.page.url is set to the exact deployed production URL of main page
+    //    using HTTPS, with no query string.
+    // 4. Verify this.page.identifier is set to exactly: home
+    window.disqus_config = function (this: any) {
+      if (this) {
+        if (!this.page) {
+          this.page = {};
+        }
+        this.page.url = canonicalUrl;
+        this.page.identifier = identifier;
       }
     };
 
-    window.addEventListener('error', handleScriptError);
-    return () => {
-      window.removeEventListener('error', handleScriptError);
-    };
-  }, []);
+    console.log('Disqus Config Initialized:', {
+      shortname: actualShortname,
+      pageUrl: canonicalUrl,
+      pageIdentifier: identifier,
+    });
 
-  useEffect(() => {
-    const SCRIPT_ID = 'disqus-embed-script';
-
-    // Set configuration variables for Disqus Universal Code safely
-    window.disqus_config = function (this: any) {
-      const ctx = this || {};
-      ctx.page = ctx.page || {};
-      ctx.page.url = canonicalUrl;
-      ctx.page.identifier = identifier;
-    };
-
-    // If Disqus is already loaded on the window, reset the thread with updated config
+    // If Disqus is already loaded, reset the thread rather than loading another script
     if (typeof window.DISQUS !== 'undefined') {
       try {
         window.DISQUS.reset({
           reload: true,
           config: function (this: any) {
-            const ctx = this || {};
-            ctx.page = ctx.page || {};
-            ctx.page.url = canonicalUrl;
-            ctx.page.identifier = identifier;
+            if (this) {
+              if (!this.page) {
+                this.page = {};
+              }
+              this.page.url = canonicalUrl;
+              this.page.identifier = identifier;
+            }
           },
         });
+        console.log('Disqus thread reset successfully for identifier:', identifier);
       } catch (err) {
-        console.warn('Error resetting Disqus:', err);
+        console.error('Disqus reset error:', err);
       }
-      return;
+      return () => {
+        window.removeEventListener('securitypolicyviolation', handleCspViolation);
+      };
     }
 
-    // Ensure we do not load a malformed script tag with brackets or spaces.
-    // If the placeholder is present, use a safe default shortname so the script tag is valid.
-    const effectiveShortname = isConfiguredShortname(shortname)
-      ? shortname.trim()
-      : 'tcg-singles-demo';
+    // Monitor Disqus iframe loading inside the container
+    const container = document.getElementById('disqus_thread');
+    let observer: MutationObserver | null = null;
+    if (container) {
+      observer = new MutationObserver(() => {
+        const iframe = container.querySelector('iframe');
+        if (iframe) {
+          console.log('Disqus iframe loaded successfully in #disqus_thread:', {
+            name: iframe.name,
+            src: iframe.src || 'disqus-embed',
+            height: iframe.style.height || iframe.height,
+          });
+          iframe.addEventListener('error', (err) => {
+            console.error('Disqus iframe error:', err);
+          });
+          if (observer) {
+            observer.disconnect();
+          }
+        }
+      });
+      observer.observe(container, { childList: true, subtree: true });
+    }
 
     // Load the Disqus Universal Code script ONLY ONCE
     if (!document.getElementById(SCRIPT_ID)) {
       const d = document;
       const s = d.createElement('script');
       s.id = SCRIPT_ID;
-      s.src = `https://${effectiveShortname}.disqus.com/embed.js`;
+      // 2. Verify Disqus configuration uses actual Disqus shortname and not a placeholder
+      s.src = `https://${actualShortname}.disqus.com/embed.js`;
       s.setAttribute('data-timestamp', String(+new Date()));
       s.async = true;
+
+      // Log network failures and script loading errors
       s.onerror = (e) => {
-        console.warn('Disqus script could not be loaded:', e);
+        if (typeof (e as any)?.stopPropagation === 'function') {
+          (e as any).stopPropagation();
+        }
+        if (typeof (e as any)?.preventDefault === 'function') {
+          (e as any).preventDefault();
+        }
+        console.warn('Disqus script loading notice (network or third-party block):', {
+          src: s.src,
+        });
       };
+
       (d.head || d.body).appendChild(s);
     }
-  }, [shortname, canonicalUrl, identifier]);
+
+    return () => {
+      window.removeEventListener('securitypolicyviolation', handleCspViolation);
+      if (observer) {
+        observer.disconnect();
+      }
+    };
+  }, [actualShortname, canonicalUrl, identifier]);
 
   return (
     <section
       id="disqus-feedback-section"
-      className="mt-12 pt-8 border-t border-slate-800"
+      className="mt-12 pt-8 border-t border-slate-800 relative z-10"
+      style={{ position: 'relative', zIndex: 10, pointerEvents: 'auto' }}
       aria-label="Product feedback comments"
     >
+      {/* Component-level scoped style guaranteeing no overlay or pointer-events interference */}
+      <style>{`
+        #disqus-feedback-section,
+        #disqus_thread,
+        #disqus_thread iframe {
+          pointer-events: auto !important;
+          position: relative !important;
+          z-index: 10 !important;
+        }
+      `}</style>
+
       <div className="mb-4">
         <h3 className="text-lg font-bold text-white tracking-tight">
           Visitor Feedback
@@ -164,9 +254,15 @@ export const DisqusComments: React.FC<DisqusCommentsProps> = ({
         </p>
       </div>
 
+      {/* 
+        Container for Disqus thread:
+        Notice: No internal padding or overflow:hidden is applied directly to #disqus_thread
+        so that Disqus iframe sizing and pointer-event coordinate translation are not distorted.
+      */}
       <div
         id="disqus_thread"
-        className="min-h-[160px] bg-slate-900/40 rounded-2xl p-4 border border-slate-800/80"
+        className="w-full min-h-[360px] relative z-10"
+        style={{ minHeight: '360px', position: 'relative', zIndex: 10, pointerEvents: 'auto' }}
       />
     </section>
   );
