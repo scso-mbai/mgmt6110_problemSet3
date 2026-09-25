@@ -1,15 +1,16 @@
 import React, { useEffect, useMemo } from 'react';
 
 // Disqus configuration constants:
-// Actual Disqus shortname and live production address for the project
 export const DISQUS_SHORTNAME = 'humanaicollaboration';
-
 export const LIVE_ADDRESS =
   import.meta.env.VITE_LIVE_ADDRESS || 'https://mgmt6110problemset3.vercel.app/';
 
 declare global {
   interface Window {
     disqus_config?: (this: any) => void;
+    disqus_shortname?: string;
+    disqus_identifier?: string;
+    disqus_url?: string;
     DISQUS?: {
       reset: (options: {
         reload: boolean;
@@ -33,7 +34,7 @@ export function getCanonicalLiveUrl(rawAddress: string): string {
   // Strip query string and fragment
   let clean = rawAddress.split('?')[0].split('#')[0].trim();
 
-  // If prompt template placeholder was present, replace with actual production address
+  // If placeholder was present, fallback to production address
   if (clean.includes('[PASTE') || clean.includes('yourproject.vercel.app')) {
     clean = 'https://mgmt6110problemset3.vercel.app/';
   }
@@ -48,6 +49,18 @@ export function getCanonicalLiveUrl(rawAddress: string): string {
   return clean;
 }
 
+// 3. Define initial Disqus configuration early on window before any embed script load
+if (typeof window !== 'undefined') {
+  window.disqus_shortname = DISQUS_SHORTNAME;
+  window.disqus_identifier = 'home';
+  window.disqus_url = 'https://mgmt6110problemset3.vercel.app/';
+  window.disqus_config = function (this: any) {
+    this.page = this.page || {};
+    this.page.identifier = 'home';
+    this.page.url = 'https://mgmt6110problemset3.vercel.app/';
+  };
+}
+
 interface DisqusCommentsProps {
   shortname?: string;
   url?: string;
@@ -59,26 +72,11 @@ export const DisqusComments: React.FC<DisqusCommentsProps> = ({
   url = LIVE_ADDRESS,
   identifier = 'home',
 }) => {
-  // Production URL with HTTPS and no query string
   const canonicalUrl = useMemo(() => getCanonicalLiveUrl(url), [url]);
 
-  // Use the actual verified shortname
-  const actualShortname = useMemo(() => {
-    const trimmed = (shortname || '').trim();
-    if (
-      !trimmed ||
-      trimmed === '[PASTE YOUR SHORTNAME]' ||
-      trimmed.startsWith('[') ||
-      trimmed.toLowerCase() === 'humanaicollaboration'
-    ) {
-      return 'humanaicollaboration';
-    }
-    return trimmed;
-  }, [shortname]);
-
   useEffect(() => {
-    // 8. Detect whether the application is currently running inside an iframe using:
-    //    window.self !== window.top
+    // 14. Detect whether the app is running inside an embedded preview with:
+    //     window.self !== window.top
     let isInsideIframe = false;
     try {
       isInsideIframe = window.self !== window.top;
@@ -88,36 +86,18 @@ export const DisqusComments: React.FC<DisqusCommentsProps> = ({
 
     if (isInsideIframe) {
       console.log(
-        'This app is running inside an embedded preview. Disqus interaction may behave differently from the deployed production site.'
+        'The app is running inside an embedded preview. Disqus should also be tested on the deployed production URL.'
       );
     }
 
-    // 7. Inspect whether the Disqus iframe itself is loading successfully.
-    //    Log relevant errors from browser console:
-    //    - Third-party cookie & storage access warnings
-    if (typeof navigator !== 'undefined' && !navigator.cookieEnabled) {
-      console.warn(
-        'Disqus Warning: Browser cookies are disabled. Disqus comment box interaction requires cookies.'
-      );
-    }
-
-    if (typeof document !== 'undefined' && 'hasStorageAccess' in document) {
-      document
-        .hasStorageAccess()
-        .then((hasAccess) => {
-          if (!hasAccess && isInsideIframe) {
-            console.warn(
-              'Disqus Warning: Third-party storage access is ungranted in this embedded iframe. Cross-site cookie partitioning may restrict typing/authenticating in Disqus.'
-            );
-          }
-        })
-        .catch(() => {});
-    }
-
-    //    - Content Security Policy errors
+    // 10. Listen for Content Security Policy violations involving Disqus
     const handleCspViolation = (e: SecurityPolicyViolationEvent) => {
       const blocked = e.blockedURI || '';
-      if (blocked.includes('disqus') || blocked.includes('disquscdn')) {
+      if (
+        blocked.includes('disqus.com') ||
+        blocked.includes('disquscdn.com') ||
+        blocked.includes('humanaicollaboration')
+      ) {
         console.error('Content Security Policy blocked Disqus resource:', {
           blockedURI: e.blockedURI,
           violatedDirective: e.violatedDirective,
@@ -127,87 +107,99 @@ export const DisqusComments: React.FC<DisqusCommentsProps> = ({
     };
     window.addEventListener('securitypolicyviolation', handleCspViolation);
 
-    // 1. Inspect existing Disqus component and confirm Disqus Universal Embed script
-    //    is loaded correctly and only once.
-    const SCRIPT_ID = 'disqus-embed-script';
+    // 1 & 2. Verify that the main page contains exactly one persistent element with id="disqus_thread"
+    const threadEl = document.getElementById('disqus_thread');
+    if (!threadEl) {
+      console.error(
+        'Disqus Error: #disqus_thread container element was not found in the DOM.'
+      );
+      return;
+    }
 
-    // 3. Verify this.page.url is set to the exact deployed production URL of main page
-    //    using HTTPS, with no query string.
-    // 4. Verify this.page.identifier is set to exactly: home
+    // 3. Define the configuration before the embed script loads
+    // 4. Keep this.page.identifier = "home"
+    // 5. Keep existing production page URL configuration
+    window.disqus_shortname = 'humanaicollaboration';
+    window.disqus_identifier = identifier;
+    window.disqus_url = canonicalUrl;
     window.disqus_config = function (this: any) {
-      if (this) {
-        if (!this.page) {
-          this.page = {};
-        }
-        this.page.url = canonicalUrl;
-        this.page.identifier = identifier;
-      }
+      this.page = this.page || {};
+      this.page.identifier = identifier;
+      this.page.url = canonicalUrl;
     };
 
-    console.log('Disqus Config Initialized:', {
-      shortname: actualShortname,
-      pageUrl: canonicalUrl,
-      pageIdentifier: identifier,
+    console.log('Disqus Configuration Ready:', {
+      shortname: 'humanaicollaboration',
+      identifier: identifier,
+      url: canonicalUrl,
     });
 
-    // If Disqus is already loaded, reset the thread rather than loading another script
+    const SCRIPT_ID = 'disqus-embed-script';
+    const EMBED_URL = 'https://humanaicollaboration.disqus.com/embed.js';
+
+    // 9. Inspect contents of #disqus_thread and verify whether Disqus inserts an iframe inside it
+    let iframeDetected = false;
+    const observer = new MutationObserver(() => {
+      const iframe = threadEl.querySelector('iframe');
+      if (iframe) {
+        iframeDetected = true;
+        console.log('Disqus iframe detected inside #disqus_thread:', {
+          name: iframe.name,
+          title: iframe.title,
+          src: iframe.src || 'disqus-embed',
+        });
+      }
+    });
+    observer.observe(threadEl, { childList: true, subtree: true });
+
+    // 10. Check if an iframe appears within 5 seconds; if not, log diagnostic information
+    const checkTimer = setTimeout(() => {
+      const iframe = threadEl.querySelector('iframe');
+      if (!iframe && !iframeDetected) {
+        console.warn('Disqus Diagnostic: No iframe found in #disqus_thread after 5s.', {
+          cookiesEnabled: navigator.cookieEnabled,
+          isEmbeddedIframe: isInsideIframe,
+          online: navigator.onLine,
+          threadElement: threadEl.outerHTML.slice(0, 100),
+        });
+      }
+    }, 5000);
+
+    // 8. If embed.js has already loaded, do not inject another copy. Use DISQUS.reset
     if (typeof window.DISQUS !== 'undefined') {
       try {
         window.DISQUS.reset({
           reload: true,
           config: function (this: any) {
-            if (this) {
-              if (!this.page) {
-                this.page = {};
-              }
-              this.page.url = canonicalUrl;
-              this.page.identifier = identifier;
-            }
+            this.page = this.page || {};
+            this.page.identifier = identifier;
+            this.page.url = canonicalUrl;
           },
         });
         console.log('Disqus thread reset successfully for identifier:', identifier);
       } catch (err) {
         console.error('Disqus reset error:', err);
       }
+
       return () => {
+        clearTimeout(checkTimer);
+        observer.disconnect();
         window.removeEventListener('securitypolicyviolation', handleCspViolation);
       };
     }
 
-    // Monitor Disqus iframe loading inside the container
-    const container = document.getElementById('disqus_thread');
-    let observer: MutationObserver | null = null;
-    if (container) {
-      observer = new MutationObserver(() => {
-        const iframe = container.querySelector('iframe');
-        if (iframe) {
-          console.log('Disqus iframe loaded successfully in #disqus_thread:', {
-            name: iframe.name,
-            src: iframe.src || 'disqus-embed',
-            height: iframe.style.height || iframe.height,
-          });
-          iframe.addEventListener('error', (err) => {
-            console.error('Disqus iframe error:', err);
-          });
-          if (observer) {
-            observer.disconnect();
-          }
-        }
-      });
-      observer.observe(container, { childList: true, subtree: true });
-    }
-
-    // Load the Disqus Universal Code script ONLY ONCE
+    // 6 & 7. Load Disqus script from exactly https://humanaicollaboration.disqus.com/embed.js only once
     if (!document.getElementById(SCRIPT_ID)) {
-      const d = document;
-      const s = d.createElement('script');
+      const s = document.createElement('script');
       s.id = SCRIPT_ID;
-      // 2. Verify Disqus configuration uses actual Disqus shortname and not a placeholder
-      s.src = `https://${actualShortname}.disqus.com/embed.js`;
+      s.src = EMBED_URL;
       s.setAttribute('data-timestamp', String(+new Date()));
       s.async = true;
 
-      // Log network failures and script loading errors
+      s.onload = () => {
+        console.log('Disqus embed.js script loaded successfully from:', EMBED_URL);
+      };
+
       s.onerror = (e) => {
         if (typeof (e as any)?.stopPropagation === 'function') {
           (e as any).stopPropagation();
@@ -215,40 +207,25 @@ export const DisqusComments: React.FC<DisqusCommentsProps> = ({
         if (typeof (e as any)?.preventDefault === 'function') {
           (e as any).preventDefault();
         }
-        console.warn('Disqus script loading notice (network or third-party block):', {
-          src: s.src,
-        });
+        console.error('Failed to load Disqus embed script from:', EMBED_URL);
       };
 
-      (d.head || d.body).appendChild(s);
+      (document.head || document.body).appendChild(s);
     }
 
     return () => {
+      clearTimeout(checkTimer);
+      observer.disconnect();
       window.removeEventListener('securitypolicyviolation', handleCspViolation);
-      if (observer) {
-        observer.disconnect();
-      }
     };
-  }, [actualShortname, canonicalUrl, identifier]);
+  }, [canonicalUrl, identifier]);
 
   return (
     <section
       id="disqus-feedback-section"
-      className="mt-12 pt-8 border-t border-slate-800 relative z-10"
-      style={{ position: 'relative', zIndex: 10, pointerEvents: 'auto' }}
+      className="mt-12 pt-8 border-t border-slate-800"
       aria-label="Product feedback comments"
     >
-      {/* Component-level scoped style guaranteeing no overlay or pointer-events interference */}
-      <style>{`
-        #disqus-feedback-section,
-        #disqus_thread,
-        #disqus_thread iframe {
-          pointer-events: auto !important;
-          position: relative !important;
-          z-index: 10 !important;
-        }
-      `}</style>
-
       <div className="mb-4">
         <h3 className="text-lg font-bold text-white tracking-tight">
           Visitor Feedback
@@ -258,16 +235,12 @@ export const DisqusComments: React.FC<DisqusCommentsProps> = ({
         </p>
       </div>
 
-      {/* 
-        Container for Disqus thread:
-        Notice: No internal padding or overflow:hidden is applied directly to #disqus_thread
-        so that Disqus iframe sizing and pointer-event coordinate translation are not distorted.
+      {/*
+        1. Exactly one persistent element with id="disqus_thread"
+        12. Removed artificial height/position/pointer-event CSS overrides that distorted Disqus's layout.
+        13. No fixed height applied to the container or iframe.
       */}
-      <div
-        id="disqus_thread"
-        className="w-full min-h-[360px] relative z-10"
-        style={{ minHeight: '360px', position: 'relative', zIndex: 10, pointerEvents: 'auto' }}
-      />
+      <div id="disqus_thread" className="w-full" />
     </section>
   );
 };

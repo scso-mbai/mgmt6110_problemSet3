@@ -54,6 +54,16 @@
           }
           return false;
         };
+
+        // 3. Early initialization of Disqus configuration before embed.js loads
+        window.disqus_shortname = 'humanaicollaboration';
+        window.disqus_identifier = 'home';
+        window.disqus_url = 'https://mgmt6110problemset3.vercel.app/';
+        window.disqus_config = function() {
+          this.page = this.page || {};
+          this.page.identifier = 'home';
+          this.page.url = 'https://mgmt6110problemset3.vercel.app/';
+        };
       })();
     </script>
     <title>Trading Card Marketplace</title>
