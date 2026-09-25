@@ -62,7 +62,13 @@ export const DisqusComments: React.FC = () => {
       </div>
 
       {/* 3. Immediately below that heading, render exactly one persistent: <div id="disqus_thread"></div> */}
-      <div id="disqus_thread"></div>
+      {/* Disqus reads this element's colours to choose its light/dark theme, but it cannot
+          parse Tailwind v4's oklch() colours and silently fails to render. Plain rgb() values
+          (slate-200 text on slate-950) let it load and match the dark page. */}
+      <div
+        id="disqus_thread"
+        style={{ color: 'rgb(226, 232, 240)', backgroundColor: 'rgb(2, 6, 23)' }}
+      ></div>
 
       <noscript>
         Please enable JavaScript to view the{' '}
