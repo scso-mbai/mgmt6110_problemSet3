@@ -3,37 +3,6 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <script>
-      (function() {
-        function handleScriptError(e) {
-          var msg = (e && e.message) || '';
-          if (msg === 'Script error.' || msg.indexOf('Script error') !== -1 || (!e.filename && !e.lineno)) {
-            if (e.preventDefault) e.preventDefault();
-            if (e.stopImmediatePropagation) e.stopImmediatePropagation();
-            return true;
-          }
-        }
-        window.addEventListener('error', handleScriptError, true);
-        window.addEventListener('unhandledrejection', function(e) {
-          var reason = e.reason ? String(e.reason.message || e.reason) : '';
-          if (reason.indexOf('Script error') !== -1) {
-            if (e.preventDefault) e.preventDefault();
-            if (e.stopImmediatePropagation) e.stopImmediatePropagation();
-            return true;
-          }
-        }, true);
-        var origOnError = window.onerror;
-        window.onerror = function(msg, url, line, col, err) {
-          if (msg === 'Script error.' || (!url && !line)) {
-            return true;
-          }
-          if (typeof origOnError === 'function') {
-            return origOnError.apply(this, arguments);
-          }
-          return false;
-        };
-      })();
-    </script>
     <title>Trading Card Marketplace</title>
     <meta name="description" content="A mobile-ready trading card marketplace for browsing single cards, checking market prices, and comparing store prices, stock, and distances." />
     <meta property="og:title" content="Trading Card Marketplace" />
