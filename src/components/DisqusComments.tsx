@@ -12,9 +12,18 @@ declare global {
   }
 }
 
+// Ensure window.disqus_config is set with real values before embed.js executes
+if (typeof window !== 'undefined') {
+  window.disqus_config = function (this: any) {
+    this.page = this.page || {};
+    this.page.url = 'https://mgmt6110problemset3.vercel.app/';
+    this.page.identifier = 'home';
+  };
+}
+
 export const DisqusComments: React.FC = () => {
   useEffect(() => {
-    // 4. Before loading Disqus, configure:
+    // Configure with real values:
     window.disqus_config = function (this: any) {
       this.page = this.page || {};
       this.page.url = 'https://mgmt6110problemset3.vercel.app/';
@@ -42,6 +51,14 @@ export const DisqusComments: React.FC = () => {
       s.id = SCRIPT_ID;
       s.src = 'https://humanaicollaboration.disqus.com/embed.js';
       s.setAttribute('data-timestamp', String(+new Date()));
+      s.onerror = (e) => {
+        if (typeof (e as any)?.preventDefault === 'function') {
+          (e as any).preventDefault();
+        }
+        if (typeof (e as any)?.stopPropagation === 'function') {
+          (e as any).stopPropagation();
+        }
+      };
       (d.head || d.body).appendChild(s);
     }
   }, []);
